@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+outputs/checkpoints/
+outputs/tensorboard/
+*.pt
+*.pth
