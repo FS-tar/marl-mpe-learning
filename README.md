@@ -98,3 +98,17 @@ outputs/
 ```
 
 注意：`outputs/checkpoints` 和 `outputs/tensorboard` 默认不纳入 Git 跟踪，避免提交大型训练产物。
+
+## MPE 环境测试
+
+运行 simple_spread 随机策略测试：
+
+```bash
+python envs/run_mpe_simple_spread.py
+```
+
+如果想打开可视化窗口：
+
+```bash
+python envs/run_mpe_simple_spread.py --render-mode human
+```
