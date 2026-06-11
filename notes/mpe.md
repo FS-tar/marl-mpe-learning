@@ -221,18 +221,36 @@ Parallel API 是多个 agent 同时行动。一次 `env.step(actions)` 接收一
 
 ```text
 日期：
-环境：
+环境：simple
 source：mpe2 / pettingzoo.mpe
-运行命令：
-possible_agents：
+运行命令：python envs/render_mpe_env.py --env simple --steps 100 --sleep 0.1
+possible_agents：agent0
 observation_space：
 action_space：
 画面观察：
-agent 行为：
+agent 行为：深灰色
+landmark：深红色
 reward 变化：
 terminated / truncated 情况：
-我还不理解的问题：
 ```
+
+*留个指令方便回头跑跑跑
+
+ * python envs/render_mpe_env.py --env simple --steps 100 --sleep 0.1
+1agent深灰色 1landmark暗红色
+单智能体环境
+ * python envs/render_mpe_env.py --env simple_spread --steps 300 --sleep 0.05
+3agent蓝紫色 3landmark深灰色 
+ * python envs/render_mpe_env.py --env simple_adversary --steps 300 --sleep 0.05
+1adversary蓝紫色 2agent暗红色 2landmark 黑+绿
+混合对抗环境
+good agents 知道真正目标是哪一个，所以它们 observation 里包含目标 landmark 信息。
+adversary 不知道目标是哪一个，所以它 observation 里少了这部分信息。
+ * python envs/render_mpe_env.py --env simple_tag --steps 300 --sleep 0.05
+3adversary暗红 1agent绿 2landmark（obstacle）深灰
+追逐逃跑环境 他追他逃
+ * python envs/render_mpe_env.py --env simple_push --steps 300 --sleep 0.05
+1adversary暗红 1agent蓝紫色 2landmark绿+蓝紫
 
 ### random baseline 记录模板
 
@@ -261,3 +279,104 @@ CSV 路径：
 - 训练目标是什么：来自每一步 reward 和 episode return。
 
 等这些接口事实稳定后，再进入 PPO、QMIX、MADDPG，会更容易判断每个算法到底解决了什么问题。
+
+## MPE 图形化界面学习记录
+
+### 图形界面里的对象含义
+
+在 MPE 的图形化窗口中，常见对象包括 agent、landmark 和 adversary。
+
+agent 是会行动的智能体。它会根据当前 observation 选择 action，然后在二维平面里移动。不同环境中 agent 的目标可能不同：有的要靠近 landmark，有的要逃跑，有的要合作完成任务。
+
+landmark 是环境里的目标点、参考点或障碍点。它通常不会主动行动，但会影响 observation 和 reward。在 simple_spread 里，landmark 是需要被多个 agent 分散覆盖的位置。
+
+adversary 是对抗方智能体。它也是 agent 的一种，只是角色和奖励目标不同。比如在 simple_tag 中，adversary 往往负责追逐 good agent；在 simple_adversary 中，adversary 会和合作方目标冲突。
+
+### simple 环境观察记录
+
+`simple_v3` 可以看作最小的 MPE 调试环境。图形界面中通常只有一个可行动 agent 和一个目标 landmark。
+
+这个环境适合先观察最基础的问题：
+
+- agent 采取动作后，位置如何变化。
+- observation 中哪些数值可能对应速度或相对位置。
+- reward 是否随着 agent 接近 landmark 而变化。
+- 固定动作模式下，例如一直 right 或一直 up，图形界面里的运动方向是否符合预期。
+
+因为对象少、干扰少，`simple_v3` 很适合用来区分 agent 和 landmark。
+
+### simple_spread 环境观察记录
+
+`simple_spread_v3` 是当前重点学习环境。图形界面中有多个 agent 和多个 landmark，任务目标是让 agent 分散覆盖 landmark，并尽量避免互相碰撞。
+
+观察这个环境时，可以重点看：
+
+- 多个 agent 如果都随机运动，会不会聚在一起或错过 landmark。
+- 如果所有 agent 都执行相同方向动作，它们会不会整体一起移动。
+- reward 通常体现团队效果，而不是某个 agent 单独表现。
+- 最好的策略不应该是所有 agent 追同一个 landmark，而是自动分工。
+
+这个环境很好地展示了多智能体协作的核心：每个 agent 只控制自己，但奖励鼓励团队整体覆盖。
+
+### simple_adversary 环境观察记录
+
+`simple_adversary_v3` 是混合对抗环境。图形界面里通常能看到合作方 agent、adversary 和 landmark。
+
+观察重点是角色不同导致行为目标不同：合作方希望完成自己的目标，adversary 则会干扰或追求相反目标。这个环境比 simple_spread 更复杂，因为 reward 不再只是单纯团队协作，还包含对抗关系。
+
+初学时可以先观察对象颜色和运动方式，再结合 rewards 判断哪些 agent 属于同一阵营。
+
+### simple_tag 环境观察记录
+
+`simple_tag_v3` 是追逐逃跑类环境。图形界面中通常有 adversary 和 good agents。
+
+直观理解：
+
+- adversary 像追捕者，目标是接近或抓到 good agents。
+- good agents 像逃跑者，目标是远离 adversary，避免被追到。
+
+random policy 下，这个环境会显得特别乱，因为追捕者和逃跑者都没有形成稳定策略，只是在随机移动。后续如果训练成功，应该能看到 adversary 更会包围或追逐，good agents 更会躲避。
+
+### simple_push 环境观察记录
+
+`simple_push_v3` 涉及推动、目标争夺或干扰。图形界面中除了 agent 和 landmark，还要注意物理接触和位置阻挡。
+
+这个环境的难点在于：agent 的动作不只是改变自己的位置，还可能通过碰撞或推动影响其他对象。它适合在理解 simple 和 simple_spread 之后再看，因为它多了一层物理交互含义。
+
+### 为什么 random policy 看起来很乱
+
+random policy 每一步都是从 action space 里随机选动作。它没有记忆，也没有目标，更不会根据 landmark 或 adversary 的位置做计划。
+
+所以图形界面中会看到：
+
+- agent 一会儿向左，一会儿向右，轨迹抖动。
+- 多个 agent 之间没有分工。
+- adversary 不会持续追逐目标。
+- good agent 不会稳定逃跑。
+- reward 可能波动很大，episode return 通常不稳定。
+
+这正是 random baseline 的意义：它不是为了表现好，而是给后续学习算法一个最低参照。
+
+### 为什么 simple_spread 适合作为第一个训练环境
+
+`simple_spread_v3` 很适合作为后续 PPO、QMIX、MADDPG 的第一个训练环境，因为它同时满足几个条件：
+
+- 环境不复杂，画面容易理解。
+- 多个 agent 的 observation/action space 通常一致。
+- 动作空间是离散的，便于先做策略输出或 Q 值输出。
+- reward 体现团队协作，适合学习多智能体信用分配问题。
+- 图形界面能直观看到策略有没有从随机乱动变成分散覆盖 landmark。
+
+在进入算法之前，先把 simple_spread 的图形表现、字典接口、reward 结构搞清楚，可以减少后续调试难度。
+
+### MPE 环境对比表
+
+| 环境 | 常见 agent 数量 | 任务类型 | 是否适合入门 |
+| --- | ---: | --- | --- |
+| `simple_v3` | 1 | 单智能体接近 landmark | 非常适合，用于理解基础接口和图形对象 |
+| `simple_spread_v3` | 3 | 多智能体协作覆盖 landmark | 非常适合，建议作为第一个 MARL 训练环境 |
+| `simple_adversary_v3` | 多个，含 adversary | 混合协作与对抗 | 适合进阶，先理解角色差异 |
+| `simple_tag_v3` | 多个，含 adversary 和 good agents | 追逐逃跑对抗 | 适合进阶，行为更复杂 |
+| `simple_push_v3` | 多个，含对抗或干扰角色 | 推动、目标争夺、物理干扰 | 适合进阶，需要先理解物理交互 |
+
+这张表只是学习阶段的粗略整理。不同版本的 MPE2 或 PettingZoo 可能在默认 agent 数量、颜色和细节上略有差异，最终应以 `envs/compare_mpe_envs.py` 的实际输出为准。
