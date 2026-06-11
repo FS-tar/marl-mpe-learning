@@ -112,3 +112,23 @@ python envs/run_mpe_simple_spread.py
 ```bash
 python envs/run_mpe_simple_spread.py --render-mode human
 ```
+
+## 阶段 1：MPE 环境学习
+
+详细检查 `simple_spread` 的 agent、空间、reset 返回值和 step 返回值：
+
+```bash
+python envs/inspect_mpe_simple_spread.py
+```
+
+对比几个常见 MPE 环境的 agent 数量、观察空间和动作空间：
+
+```bash
+python envs/compare_mpe_envs.py
+```
+
+阅读学习笔记：
+
+```text
+notes/mpe.md
+```
