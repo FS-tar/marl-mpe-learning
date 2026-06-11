@@ -104,13 +104,14 @@ outputs/
 运行 simple_spread 随机策略测试：
 
 ```bash
-python envs/run_mpe_simple_spread.py
+python envs/inspect_mpe_simple_spread.py
+python envs/run_mpe_random_episodes.py
 ```
 
 如果想打开可视化窗口：
 
 ```bash
-python envs/run_mpe_simple_spread.py --render-mode human
+python envs/render_mpe_env.py --env simple_spread --mode random --steps 300 --sleep 0.05
 ```
 
 ## 阶段 1：MPE 环境学习
