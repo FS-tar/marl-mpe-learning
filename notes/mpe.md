@@ -163,3 +163,101 @@ step 时，`actions` 也是一个字典：
 对 QMIX 来说，`Discrete(5)` 的动作空间比较适合 value-based 方法。每个 agent 的局部 Q 网络可以输入 18 维 observation，输出 5 个动作对应的 Q 值。因为本次观察到 reward 是团队共享的，QMIX 可以把多个 agent 的局部 Q 值通过 mixing network 合成为团队 Q 值，用团队 reward 来训练。
 
 这次 inspect 的核心收获是：`simple_spread_v3` 在当前配置下是 3 个 agent、每个 agent 18 维 observation、5 个离散动作、团队共享 reward。后续不管学习 PPO、MADDPG 还是 QMIX，都要先围绕这些接口事实设计数据收集、网络输入、网络输出和训练日志。
+
+## MPE 深入学习笔记
+
+### MPE 是什么
+
+MPE 是 Multi-Agent Particle Environment，也就是多智能体粒子环境。它把多智能体问题简化到二维平面里：agent 可以移动，环境中可能有 landmark、目标、障碍、通信或对抗角色。它的价值在于足够小，能让我们专心学习多智能体接口、观测、动作和奖励，而不是被复杂模拟器淹没。
+
+### MPE2 和 PettingZoo 的关系
+
+PettingZoo 是多智能体环境接口库，早期 MPE 环境常从 `pettingzoo.mpe` 导入。MPE2 可以理解为更新的 MPE 环境包，很多环境仍然保持类似的 `simple_spread_v3.parallel_env(...)` 用法。
+
+本仓库脚本的导入策略是：优先使用 `mpe2`，如果本机不可用，再回退到 `pettingzoo.mpe`。这样既方便使用新版环境，也兼容旧教程和旧机器。
+
+### AEC API 和 Parallel API
+
+AEC API 是 Agent Environment Cycle，强调 agent 轮流行动。它表达能力强，但初学时循环结构会更绕。
+
+Parallel API 是多个 agent 同时行动。一次 `env.step(actions)` 接收一个动作字典，并返回 `observations, rewards, terminations, truncations, infos`。这些返回值也都是按 agent 名称组织的字典。
+
+### 为什么现在优先使用 parallel_env
+
+我现在优先使用 `parallel_env`，因为它更接近很多多智能体训练代码的数据流：
+
+- `observations` 是 `{agent: observation}`。
+- `actions` 是 `{agent: action}`。
+- `rewards` 是 `{agent: reward}`。
+- 所有当前活跃 agent 在同一个 step 里一起行动。
+
+先掌握这个同步交互过程，再学习 AEC API 会轻松很多。
+
+### 常见 MPE 环境
+
+`simple_v3` 是单智能体调试环境。它适合先确认 observation、action、reward 的基本含义，也适合检查渲染窗口是否正常。
+
+`simple_spread_v3` 是协作覆盖 landmark 的环境，是本阶段重点学习环境。多个 agent 需要分散到不同 landmark 附近，并避免互相碰撞。它很适合理解团队共享奖励和协作分工。
+
+`simple_adversary_v3` 是混合对抗环境。环境里通常既有合作方，也有 adversary。它适合理解“不是所有 agent 的目标都一样”。
+
+`simple_tag_v3` 是追逐逃跑对抗环境。通常 adversary 追逐 good agents，good agents 尝试逃跑。它适合观察多智能体竞争和角色差异。
+
+`simple_push_v3` 涉及推动和干扰。它能帮助理解物理交互、目标争夺和对抗行为如何影响 reward。
+
+### 核心接口概念
+
+`observation_space(agent)` 表示某个 agent 的观测空间。它决定了后续神经网络输入的形状。
+
+`action_space(agent)` 表示某个 agent 的动作空间。它决定了策略输出要表示什么，例如离散动作编号或连续动作向量。
+
+`reward` 是环境给 agent 的反馈。在协作任务中，多个 agent 的 reward 可能相同；在对抗任务中，不同角色的 reward 可能方向相反。
+
+`termination` 表示任务自然结束，例如胜利、失败或环境逻辑上的终点。
+
+`truncation` 表示外部限制导致 episode 结束，最常见的是达到最大步数。
+
+### 图形化观察记录模板
+
+```text
+日期：
+环境：
+source：mpe2 / pettingzoo.mpe
+运行命令：
+possible_agents：
+observation_space：
+action_space：
+画面观察：
+agent 行为：
+reward 变化：
+terminated / truncated 情况：
+我还不理解的问题：
+```
+
+### random baseline 记录模板
+
+```text
+日期：
+环境：simple_spread_v3
+episode 数：
+max_cycles：
+average return：
+best return：
+worst return：
+CSV 路径：
+曲线路径：
+观察结论：
+下一步：
+```
+
+### 为什么进入算法前要先理解 MPE
+
+在进入 PPO、QMIX、MADDPG 之前，必须先理解 MPE，因为算法实现本质上是在处理环境返回的数据。如果还没有搞清楚 `observations`、`actions`、`rewards` 这些字典如何流动，就很容易把算法 bug 和环境接口误解混在一起。
+
+先把 MPE 学清楚，可以明确三件事：
+
+- 网络输入是什么：来自每个 agent 的 observation。
+- 网络输出是什么：要变成每个 agent 的 action。
+- 训练目标是什么：来自每一步 reward 和 episode return。
+
+等这些接口事实稳定后，再进入 PPO、QMIX、MADDPG，会更容易判断每个算法到底解决了什么问题。

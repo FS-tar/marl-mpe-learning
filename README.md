@@ -132,3 +132,27 @@ python envs/compare_mpe_envs.py
 ```text
 notes/mpe.md
 ```
+
+## MPE 深入学习脚本
+
+对比多个 MPE 环境的 agent、观察空间和动作空间：
+
+```bash
+python envs/compare_mpe_envs.py
+```
+
+图形化观察不同 MPE 环境：
+
+```bash
+python envs/render_mpe_env.py --env simple --steps 100 --sleep 0.1
+python envs/render_mpe_env.py --env simple_spread --steps 300 --sleep 0.05
+python envs/render_mpe_env.py --env simple_adversary --steps 300 --sleep 0.05
+python envs/render_mpe_env.py --env simple_tag --steps 300 --sleep 0.05
+python envs/render_mpe_env.py --env simple_push --steps 300 --sleep 0.05
+```
+
+运行 `simple_spread_v3` 随机策略 baseline，并保存 CSV 与曲线：
+
+```bash
+python envs/run_mpe_random_episodes.py
+```
