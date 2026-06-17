@@ -40,6 +40,7 @@ class PPOAgent:
         self,
         obs_dim: int = 18,
         action_dim: int = 5,
+        hidden_dim: int = 128,
         lr: float = 3e-4,
         clip_eps: float = 0.2,
         entropy_coef: float = 0.01,
@@ -49,6 +50,7 @@ class PPOAgent:
     ):
         # 输入：
         # - obs_dim/action_dim：网络输入输出维度，simple_spread_v3 中是 18 和 5。
+        # - hidden_dim：ActorCritic 隐藏层宽度，训练脚本可用 --hidden-dim 调整。
         # - lr：Adam 学习率。
         # - clip_eps：PPO ratio 裁剪范围。
         # - entropy_coef：entropy bonus 权重。
@@ -68,7 +70,11 @@ class PPOAgent:
         self.max_grad_norm = max_grad_norm
         # max_grad_norm 用于防止梯度过大导致训练不稳定。
 
-        self.model = ActorCritic(obs_dim=obs_dim, action_dim=action_dim).to(self.device)
+        self.model = ActorCritic(
+            obs_dim=obs_dim,
+            action_dim=action_dim,
+            hidden_dim=hidden_dim,
+        ).to(self.device)
         # self.model 是三个 MPE agent 共享的 ActorCritic 网络。
         self.optimizer = Adam(self.model.parameters(), lr=lr)
         # optimizer 负责根据 total loss 更新 ActorCritic 参数。

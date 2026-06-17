@@ -9,15 +9,19 @@
 # 5. 调用 RolloutBuffer.add() 保存 rollout 数据。
 # 6. rollout 结束后调用 compute_gae() 和 PPOAgent.update()。
 # 7. 打印训练日志，保存 CSV、reward 曲线和 checkpoint。
-# 8. 定期用确定性动作 evaluation，区分训练采样表现和当前策略评估表现。
+# 8. 定期用确定性和随机采样两种 evaluation，区分 argmax 策略表现和采样策略表现。
 
 from __future__ import annotations
 
 import argparse
 import csv
 import importlib
+import os
 import random
+import re
+import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import matplotlib
@@ -41,9 +45,10 @@ OBS_DIM = 18
 ACTION_DIM = 5
 # simple_spread_v3 中单个 agent 的离散动作数，动作空间是 Discrete(5)。
 OUTPUT_DIR = ROOT_DIR / "outputs" / "ppo_mpe"
-CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
-CSV_PATH = OUTPUT_DIR / "train_log.csv"
-PNG_PATH = OUTPUT_DIR / "reward_curve.png"
+RUNS_DIR = OUTPUT_DIR / "runs"
+LATEST_CSV_PATH = OUTPUT_DIR / "latest_train_log.csv"
+LATEST_PNG_PATH = OUTPUT_DIR / "latest_reward_curve.png"
+LATEST_CHECKPOINT_DIR = OUTPUT_DIR / "latest_checkpoints"
 
 
 def load_simple_spread():
@@ -86,12 +91,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--minibatch-size", type=int, default=256)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--render", action="store_true", default=False)
+    parser.add_argument("--hidden-dim", type=int, default=128)
     parser.add_argument("--reward-scale", type=float, default=0.1)
     parser.add_argument("--entropy-coef", type=float, default=0.01)
     parser.add_argument("--value-coef", type=float, default=0.5)
     parser.add_argument("--max-grad-norm", type=float, default=0.5)
     parser.add_argument("--eval-interval", type=int, default=10)
     parser.add_argument("--eval-episodes", type=int, default=5)
+    parser.add_argument("--eval-stochastic", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--checkpoint-interval", type=int, default=50)
+    parser.add_argument("--run-name", type=str, default=None)
+    parser.add_argument("--save-latest", action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
 
 
@@ -167,53 +177,148 @@ def dict_values_to_array(values: dict, agents: list[str], default: float = 0.0) 
     return np.asarray([float(values.get(agent, default)) for agent in agents], dtype=np.float32)
 
 
-def save_log(rows: list[dict]) -> None:
+def format_float_for_run_name(value: float) -> str:
+    """把浮点参数变成短字符串，用在自动 run_name 里。"""
+
+    return f"{value:g}"
+
+
+def sanitize_run_name(run_name: str) -> str:
+    """移除 Windows 路径中不适合使用的字符。"""
+
+    return re.sub(r"[^0-9A-Za-z._-]+", "_", run_name).strip("._") or "ppo_run"
+
+
+def build_run_name(args: argparse.Namespace) -> str:
+    """根据时间戳和主要参数生成本次实验名。"""
+
+    if args.run_name:
+        return sanitize_run_name(args.run_name)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    reward_scale = format_float_for_run_name(args.reward_scale)
+    entropy_coef = format_float_for_run_name(args.entropy_coef)
+    return sanitize_run_name(
+        f"{timestamp}_spread_u{args.total_updates}_r{args.rollout_steps}"
+        f"_rs{reward_scale}_ec{entropy_coef}"
+    )
+
+
+def save_log(rows: list[dict], csv_path: Path) -> None:
     # 输入：
     # - rows：每个 update 的日志字典。
+    # - csv_path：目标 CSV 路径。
     # 输出：
-    # - 写入 outputs/ppo_mpe/train_log.csv。
+    # - 写入指定路径。
     # 注意：这是训练日志保存，不影响 PPO 算法更新逻辑。
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    with CSV_PATH.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(
-            file,
-            fieldnames=(
-                "update",
-                "train_mean_episode_return",
-                "eval_mean_episode_return",
-                "policy_loss",
-                "value_loss",
-                "entropy",
-            ),
-        )
-        writer.writeheader()
-        writer.writerows(rows)
+    tmp_path = csv_path.with_name(f".{csv_path.name}.tmp")
+
+    try:
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        with tmp_path.open("w", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(
+                file,
+                fieldnames=(
+                    "update",
+                    "train_mean_episode_return",
+                    "eval_deterministic_mean_episode_return",
+                    "eval_stochastic_mean_episode_return",
+                    "policy_loss",
+                    "value_loss",
+                    "entropy",
+                ),
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+        os.replace(tmp_path, csv_path)
+    except OSError as error:
+        print(f"warning: 保存 CSV 失败: {csv_path} ({error})")
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
-def save_reward_curve(rows: list[dict]) -> None:
+def save_reward_curve(rows: list[dict], png_path: Path) -> None:
     # 输入：
     # - rows：每个 update 的日志字典。
+    # - png_path：目标图片路径。
     # 输出：
-    # - 写入 outputs/ppo_mpe/reward_curve.png。
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    # - 写入指定路径。
+    tmp_path = png_path.with_name(f".{png_path.stem}.tmp{png_path.suffix}")
+
     updates = [row["update"] for row in rows]
     train_returns = [row["train_mean_episode_return"] for row in rows]
-    eval_returns = [
-        np.nan if row["eval_mean_episode_return"] is None else row["eval_mean_episode_return"]
+    eval_deterministic_returns = [
+        np.nan
+        if row["eval_deterministic_mean_episode_return"] is None
+        else row["eval_deterministic_mean_episode_return"]
+        for row in rows
+    ]
+    eval_stochastic_returns = [
+        np.nan
+        if row["eval_stochastic_mean_episode_return"] is None
+        else row["eval_stochastic_mean_episode_return"]
         for row in rows
     ]
 
-    plt.figure(figsize=(8, 4.5))
-    plt.plot(updates, train_returns, marker="o", label="train_mean_episode_return")
-    plt.plot(updates, eval_returns, marker="s", label="eval_mean_episode_return")
-    plt.xlabel("Update")
-    plt.ylabel("Mean episode return")
-    plt.title("Shared PPO on MPE simple_spread_v3")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(PNG_PATH, dpi=150)
-    plt.close()
+    try:
+        png_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.figure(figsize=(8, 4.5))
+        plt.plot(updates, train_returns, marker="o", label="train_mean_episode_return")
+        plt.plot(
+            updates,
+            eval_deterministic_returns,
+            marker="s",
+            label="eval_deterministic_mean_episode_return",
+        )
+        plt.plot(
+            updates,
+            eval_stochastic_returns,
+            marker="^",
+            label="eval_stochastic_mean_episode_return",
+        )
+        plt.xlabel("Update")
+        plt.ylabel("Mean episode return")
+        plt.title("Shared PPO on MPE simple_spread_v3")
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(tmp_path, dpi=150)
+        os.replace(tmp_path, png_path)
+    except OSError as error:
+        print(f"warning: 保存 reward 曲线失败: {png_path} ({error})")
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    finally:
+        plt.close()
+
+
+def copy_checkpoint_to_latest(checkpoint_path: Path, latest_checkpoint_dir: Path) -> None:
+    """把当前 run 的 checkpoint 额外复制到 latest_checkpoints。"""
+
+    try:
+        latest_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        latest_checkpoint_path = latest_checkpoint_dir / checkpoint_path.name
+        tmp_path = latest_checkpoint_path.with_name(f".{latest_checkpoint_path.name}.tmp")
+        shutil.copy2(checkpoint_path, tmp_path)
+        os.replace(tmp_path, latest_checkpoint_path)
+    except OSError as error:
+        print(f"warning: 保存 latest checkpoint 失败: {latest_checkpoint_dir} ({error})")
+
+
+def save_checkpoint(agent: PPOAgent, checkpoint_path: Path) -> bool:
+    """保存当前 run 的 checkpoint，失败时只打印 warning。"""
+
+    try:
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        agent.save(str(checkpoint_path))
+        return True
+    except (OSError, RuntimeError) as error:
+        print(f"warning: 保存 checkpoint 失败: {checkpoint_path} ({error})")
+        return False
 
 
 def evaluate_policy(
@@ -222,8 +327,9 @@ def evaluate_policy(
     max_cycles: int,
     eval_episodes: int,
     seed: int,
+    deterministic: bool,
 ) -> float:
-    """用确定性动作评估当前策略，不写 buffer，也不更新网络。"""
+    """评估当前策略，不写 buffer，也不更新网络。"""
 
     # 输入：
     # - simple_spread_v3：已导入的环境模块。
@@ -231,8 +337,9 @@ def evaluate_policy(
     # - max_cycles：每个 episode 的环境步数上限。
     # - eval_episodes：评估多少个 episode。
     # - seed：评估环境 reset 的基础随机种子。
+    # - deterministic：True 使用 argmax 动作；False 使用 Categorical 随机采样动作。
     # 输出：
-    # - eval_mean_episode_return：使用原始 reward 统计的平均 episode return。
+    # - 使用原始 reward 统计的平均 episode return。
     eval_env = simple_spread_v3.parallel_env(render_mode=None, max_cycles=max_cycles)
     eval_agents = list(eval_env.possible_agents)
     episode_returns = []
@@ -248,7 +355,10 @@ def evaluate_policy(
                 break
 
             obs_array = obs_to_array(observations, eval_agents)
-            actions = agent.act_deterministic(obs_array)
+            if deterministic:
+                actions = agent.act_deterministic(obs_array)
+            else:
+                actions, _, _ = agent.act(obs_array)
             action_dict = {
                 agent_name: int(action)
                 for agent_name, action in zip(eval_agents, actions)
@@ -285,6 +395,12 @@ def main() -> None:
     args = parse_args()
     set_seed(args.seed)
 
+    run_name = build_run_name(args)
+    run_dir = RUNS_DIR / run_name
+    run_csv_path = run_dir / "train_log.csv"
+    run_png_path = run_dir / "reward_curve.png"
+    run_checkpoint_dir = run_dir / "checkpoints"
+
     simple_spread_v3, source = load_simple_spread()
     render_mode = "human" if args.render else None
     env = simple_spread_v3.parallel_env(render_mode=render_mode, max_cycles=args.max_cycles)
@@ -307,6 +423,7 @@ def main() -> None:
     agent = PPOAgent(
         obs_dim=OBS_DIM,
         action_dim=ACTION_DIM,
+        hidden_dim=args.hidden_dim,
         lr=args.lr,
         clip_eps=args.clip_eps,
         entropy_coef=args.entropy_coef,
@@ -322,14 +439,25 @@ def main() -> None:
     )
     # buffer 按 [rollout_steps, num_agents, ...] 保存 rollout 数据。
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    run_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    if args.save_latest:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        LATEST_CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
     log_rows = []
     recent_episode_returns = []
     current_episode_return = 0.0
 
     print(f"Loaded simple_spread_v3 from: {source}")
+    print(f"当前 run_name: {run_name}")
+    print(f"当前 run_dir: {run_dir}")
+    print(f"CSV 保存路径: {run_csv_path}")
+    print(f"图表保存路径: {run_png_path}")
+    print(f"checkpoint 保存路径: {run_checkpoint_dir}")
+    if args.save_latest:
+        print(f"latest CSV 保存路径: {LATEST_CSV_PATH}")
+        print(f"latest 图表保存路径: {LATEST_PNG_PATH}")
+        print(f"latest checkpoint 保存路径: {LATEST_CHECKPOINT_DIR}")
 
     for update in range(1, args.total_updates + 1):
         # 一个 update 包含：
@@ -430,20 +558,32 @@ def main() -> None:
         # 如果已经有完整 episode，就统计最近 10 个 episode 的平均 return；
         # 如果还没有完整 episode，就暂时显示当前 episode 已累计的 return。
 
-        eval_mean_episode_return = None
+        eval_deterministic_mean_episode_return = None
+        eval_stochastic_mean_episode_return = None
         if args.eval_interval > 0 and update % args.eval_interval == 0:
-            eval_mean_episode_return = evaluate_policy(
+            eval_deterministic_mean_episode_return = evaluate_policy(
                 simple_spread_v3=simple_spread_v3,
                 agent=agent,
                 max_cycles=args.max_cycles,
                 eval_episodes=args.eval_episodes,
                 seed=args.seed + update * 1000,
+                deterministic=True,
             )
+            if args.eval_stochastic:
+                eval_stochastic_mean_episode_return = evaluate_policy(
+                    simple_spread_v3=simple_spread_v3,
+                    agent=agent,
+                    max_cycles=args.max_cycles,
+                    eval_episodes=args.eval_episodes,
+                    seed=args.seed + update * 1000 + 100,
+                    deterministic=False,
+                )
 
         row = {
             "update": update,
             "train_mean_episode_return": train_mean_episode_return,
-            "eval_mean_episode_return": eval_mean_episode_return,
+            "eval_deterministic_mean_episode_return": eval_deterministic_mean_episode_return,
+            "eval_stochastic_mean_episode_return": eval_stochastic_mean_episode_return,
             "policy_loss": info.policy_loss,
             "value_loss": info.value_loss,
             "entropy": info.entropy,
@@ -451,31 +591,43 @@ def main() -> None:
         # policy_loss/value_loss/entropy 来自 PPOAgent.update() 的平均值。
         log_rows.append(row)
 
-        eval_text = (
-            f"{eval_mean_episode_return:.3f}"
-            if eval_mean_episode_return is not None
+        eval_deterministic_text = (
+            f"{eval_deterministic_mean_episode_return:.3f}"
+            if eval_deterministic_mean_episode_return is not None
+            else "None"
+        )
+        eval_stochastic_text = (
+            f"{eval_stochastic_mean_episode_return:.3f}"
+            if eval_stochastic_mean_episode_return is not None
             else "None"
         )
         print(
             f"update={update:03d} "
             f"train_mean_episode_return={train_mean_episode_return:.3f} "
-            f"eval_mean_episode_return={eval_text} "
+            f"eval_deterministic_mean_episode_return={eval_deterministic_text} "
+            f"eval_stochastic_mean_episode_return={eval_stochastic_text} "
             f"policy_loss={info.policy_loss:.4f} "
             f"value_loss={info.value_loss:.4f} "
             f"entropy={info.entropy:.4f}"
         )
 
-        save_log(log_rows)
-        save_reward_curve(log_rows)
+        save_log(log_rows, run_csv_path)
+        save_reward_curve(log_rows, run_png_path)
 
-        if update % 10 == 0:
-            checkpoint_path = CHECKPOINT_DIR / f"ppo_update_{update:03d}.pt"
-            agent.save(str(checkpoint_path))
+        if args.save_latest:
+            save_log(log_rows, LATEST_CSV_PATH)
+            save_reward_curve(log_rows, LATEST_PNG_PATH)
+
+        if args.checkpoint_interval > 0 and update % args.checkpoint_interval == 0:
+            checkpoint_path = run_checkpoint_dir / f"ppo_update_{update:03d}.pt"
+            checkpoint_saved = save_checkpoint(agent, checkpoint_path)
+            if checkpoint_saved and args.save_latest:
+                copy_checkpoint_to_latest(checkpoint_path, LATEST_CHECKPOINT_DIR)
 
     env.close()
-    print(f"CSV saved to: {CSV_PATH}")
-    print(f"Reward curve saved to: {PNG_PATH}")
-    print(f"Checkpoints saved to: {CHECKPOINT_DIR}")
+    print(f"CSV saved to: {run_csv_path}")
+    print(f"Reward curve saved to: {run_png_path}")
+    print(f"Checkpoints saved to: {run_checkpoint_dir}")
 
 
 if __name__ == "__main__":

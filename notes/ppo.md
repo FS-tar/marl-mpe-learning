@@ -110,7 +110,7 @@ clip(ratio, 1 - clip_eps, 1 + clip_eps) * advantage
 
 这样做可以降低 GAE、returns 和 value loss 的数值尺度。critic 学习的是 return，如果 return 尺度太大，`value_loss` 可能会很大，进而让总 loss 被 critic 主导，导致 PPO 更新不稳定。
 
-注意：日志里的 `train_mean_episode_return` 和 `eval_mean_episode_return` 仍然使用环境原始 reward，不使用缩放后的 reward。这样日志仍然能反映真实环境表现。
+注意：日志里的 `train_mean_episode_return`、`eval_deterministic_mean_episode_return` 和 `eval_stochastic_mean_episode_return` 仍然使用环境原始 reward，不使用缩放后的 reward。这样日志仍然能反映真实环境表现。
 
 ### advantage 标准化的作用
 
@@ -122,22 +122,25 @@ advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
 advantage 表示动作比 critic 预期好多少。不同 rollout 中 advantage 的尺度可能差异很大，标准化可以让 policy loss 的数值更稳定，减少某一批数据过大或过小导致的更新抖动。
 
-### train_mean_episode_return 和 eval_mean_episode_return 的区别
+### train_mean_episode_return 和 eval 指标的区别
 
 `train_mean_episode_return` 来自训练采样过程。训练时 actor 使用 `Categorical` 随机采样动作，所以它包含探索噪声。
 
-`eval_mean_episode_return` 来自单独 evaluation。eval 时不写 buffer、不更新网络，并且使用确定性动作，也就是 actor logits 最大的动作：
+`eval_deterministic_mean_episode_return` 来自单独 evaluation。eval 时不写 buffer、不更新网络，并且使用确定性动作，也就是 actor logits 最大的动作：
 
 ```text
 action = argmax(logits)
 ```
 
+`eval_stochastic_mean_episode_return` 也来自单独 evaluation，同样不写 buffer、不更新网络，但它会按当前 `Categorical` 动作分布随机采样 action。这个指标更接近训练时策略的采样表现，可以用来判断“策略分布本身”是否比 random baseline 更好。
+
 因此：
 
 - `train_mean_episode_return` 更像“带探索的训练表现”。
-- `eval_mean_episode_return` 更像“当前策略本身的确定性表现”。
+- `eval_deterministic_mean_episode_return` 更像“当前策略 argmax 行为的表现”。
+- `eval_stochastic_mean_episode_return` 更像“当前策略按概率采样时的表现”。
 
-如果 train 波动很大但 eval 稳定上升，说明策略可能在学习，只是训练采样噪声较大。如果 eval 也长期不上升，说明策略本身可能还没有学到有效行为。
+如果 deterministic eval 和 stochastic eval 都长期没有超过 random baseline，说明当前策略还没有学到明显更好的 simple_spread 行为。如果 deterministic eval 较差但 stochastic eval 较好，可能说明 argmax 过早选中了局部动作；如果 stochastic eval 接近 random 且 entropy 接近 `log(5)`，通常说明策略仍然接近随机。
 
 ### entropy 接近 log(5) 表示什么
 
@@ -168,3 +171,24 @@ value_loss = MSE(new_values, returns)
 - mean_episode_return 大幅波动：训练表现不稳定。
 
 当前稳定化改进中，`reward_scale`、advantage 标准化、梯度裁剪和单独 evaluation 都是为了更清楚地观察和缓解这些问题。
+
+### 更长训练推荐配置
+
+如果 300 updates 后 PPO 仍然和 random baseline 接近，可以先尝试更长 rollout 和更长训练。下面两组命令都仍然只训练 `simple_spread_v3` 的 shared PPO：
+
+```powershell
+python experiments/ppo_mpe/train_ppo_simple_spread.py --total-updates 600 --rollout-steps 1024 --max-cycles 100 --reward-scale 0.1 --entropy-coef 0.005
+```
+
+以及：
+
+```powershell
+python experiments/ppo_mpe/train_ppo_simple_spread.py --total-updates 600 --rollout-steps 1024 --max-cycles 100 --reward-scale 0.05 --entropy-coef 0.005
+```
+
+这两组配置的思路是：
+
+- `rollout_steps=1024`：每次更新前收集更多样本，降低 advantage 估计噪声。
+- `total_updates=600`：给 shared PPO 更长学习时间。
+- `entropy_coef=0.005`：相比默认值稍微降低探索奖励，帮助策略更快从接近随机的分布中收敛出来。
+- `reward_scale=0.1` 或 `0.05`：继续控制 critic 学习目标的数值尺度，观察哪一种 value loss 更稳。
