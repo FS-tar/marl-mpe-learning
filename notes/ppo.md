@@ -95,3 +95,76 @@ clip(ratio, 1 - clip_eps, 1 + clip_eps) * advantage
 - 当前日志和模型保存较简单，目标是帮助理解 PPO 数据流，而不是追求最强性能。
 
 所以，这份代码适合作为“从单智能体 PPO 走向多智能体 PPO/MAPPO”的第一步：先理解 shared actor、critic、GAE、old_log_prob 和 clipped objective，再进一步学习 centralized critic 和更完整的 MAPPO 训练细节。
+
+## PPO 稳定化改进
+
+当前 shared PPO baseline 新增了一些稳定化训练和评估功能，目标不是改变 PPO 的核心算法，而是让训练曲线更容易观察、critic 更新更不容易被过大的 reward 尺度带偏。
+
+### reward_scale 的作用
+
+`reward_scale` 会把存入 PPO buffer 的训练 reward 缩小，例如默认 `0.1` 表示：
+
+```text
+训练用 reward = 原始 reward * 0.1
+```
+
+这样做可以降低 GAE、returns 和 value loss 的数值尺度。critic 学习的是 return，如果 return 尺度太大，`value_loss` 可能会很大，进而让总 loss 被 critic 主导，导致 PPO 更新不稳定。
+
+注意：日志里的 `train_mean_episode_return` 和 `eval_mean_episode_return` 仍然使用环境原始 reward，不使用缩放后的 reward。这样日志仍然能反映真实环境表现。
+
+### advantage 标准化的作用
+
+`PPOAgent.update()` 中保留了 advantage 标准化：
+
+```text
+advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+```
+
+advantage 表示动作比 critic 预期好多少。不同 rollout 中 advantage 的尺度可能差异很大，标准化可以让 policy loss 的数值更稳定，减少某一批数据过大或过小导致的更新抖动。
+
+### train_mean_episode_return 和 eval_mean_episode_return 的区别
+
+`train_mean_episode_return` 来自训练采样过程。训练时 actor 使用 `Categorical` 随机采样动作，所以它包含探索噪声。
+
+`eval_mean_episode_return` 来自单独 evaluation。eval 时不写 buffer、不更新网络，并且使用确定性动作，也就是 actor logits 最大的动作：
+
+```text
+action = argmax(logits)
+```
+
+因此：
+
+- `train_mean_episode_return` 更像“带探索的训练表现”。
+- `eval_mean_episode_return` 更像“当前策略本身的确定性表现”。
+
+如果 train 波动很大但 eval 稳定上升，说明策略可能在学习，只是训练采样噪声较大。如果 eval 也长期不上升，说明策略本身可能还没有学到有效行为。
+
+### entropy 接近 log(5) 表示什么
+
+simple_spread 当前动作空间是 `Discrete(5)`。如果 5 个动作概率接近均匀分布，entropy 大约是：
+
+```text
+log(5) ≈ 1.609
+```
+
+如果训练很久后 entropy 仍然长期接近 `log(5)`，通常说明 actor 还接近随机策略，没有明显偏向某些动作。可能原因包括 reward 信号太噪、advantage 不稳定、学习率或 entropy 系数不合适等。
+
+如果 entropy 很快接近 0，则说明策略过早变得确定，探索不足，也可能影响最终表现。
+
+### value_loss 大说明 critic 不稳定
+
+`value_loss` 衡量 critic 的 value 预测和 returns 的差距：
+
+```text
+value_loss = MSE(new_values, returns)
+```
+
+如果 `value_loss` 很大，说明 critic 对未来回报的估计不准。critic 不准会进一步影响 advantage，因为 advantage 依赖 value 估计。
+
+常见现象是：
+
+- value_loss 大：critic 学得不稳。
+- advantage 噪声大：policy update 方向不稳定。
+- mean_episode_return 大幅波动：训练表现不稳定。
+
+当前稳定化改进中，`reward_scale`、advantage 标准化、梯度裁剪和单独 evaluation 都是为了更清楚地观察和缓解这些问题。

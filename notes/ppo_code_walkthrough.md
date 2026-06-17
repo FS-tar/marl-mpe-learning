@@ -44,17 +44,6 @@ PPOAgent.update
 反向传播更新 ActorCritic
 ```
 
-如果用你给出的概念链条写，就是：
-
-```text
-env.reset
-→ actor_critic.select_action
-→ env.step
-→ buffer.add
-→ compute_gae
-→ ppo_agent.update
-```
-
 在本项目实际代码中，这条链对应为：
 
 ```text
