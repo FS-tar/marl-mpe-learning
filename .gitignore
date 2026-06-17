@@ -1,7 +1,13 @@
 .venv/
 __pycache__/
-outputs/
-outputs/checkpoints/
-outputs/tensorboard/
+*.pyc
+
 *.pt
 *.pth
+checkpoints/
+**/checkpoints/
+
+# 默认忽略输出目录里的大文件/模型
+outputs/**/checkpoints/
+outputs/**/*.pt
+outputs/**/*.pth
