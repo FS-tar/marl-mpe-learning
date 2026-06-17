@@ -5,6 +5,9 @@
 这些样本展平成一个 batch，但先按时间和 agent 保存更容易理解 GAE。
 """
 
+#收集数据，计算advantage和return
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,7 +24,7 @@ class PPOBatch:
     advantages: torch.Tensor
     returns: torch.Tensor
     old_values: torch.Tensor
-
+#训练数据包
 
 class RolloutBuffer:
     """保存一次 rollout，并计算 GAE advantage。"""
@@ -44,6 +47,7 @@ class RolloutBuffer:
         self.values = np.zeros((self.rollout_steps, self.num_agents), dtype=np.float32)
         self.rewards = np.zeros((self.rollout_steps, self.num_agents), dtype=np.float32)
         self.dones = np.zeros((self.rollout_steps, self.num_agents), dtype=np.float32)
+    #创建空表
 
     def add(
         self,
@@ -67,6 +71,7 @@ class RolloutBuffer:
         self.dones[self.step] = dones
         self.step += 1
 
+    #很重要！advantage：这个动作比 critic 原来预期的好多少 return：critic 后面要学习的目标值
     def compute_gae(
         self,
         last_values: np.ndarray,
@@ -81,6 +86,7 @@ class RolloutBuffer:
         advantages = np.zeros_like(self.rewards, dtype=np.float32)
         last_gae = np.zeros(self.num_agents, dtype=np.float32)
 
+        #从最后一步往前推
         for t in reversed(range(self.rollout_steps)):
             if t == self.rollout_steps - 1:
                 next_values = last_values

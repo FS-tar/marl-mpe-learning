@@ -5,6 +5,9 @@
 在每一步输入自己的 18 维 observation。
 """
 
+#把observation转成动作概率actor和状态价值critic
+#logits+value
+
 from __future__ import annotations
 
 import torch
@@ -41,6 +44,7 @@ class ActorCritic(nn.Module):
         logits = self.actor(features)
         values = self.critic(features).squeeze(-1)
         return logits, values
+    #提取特征放入网络
 
     def get_action_and_value(
         self,
@@ -58,7 +62,9 @@ class ActorCritic(nn.Module):
 
         if action is None:
             action = dist.sample()
+            #按概率随机选择一个动作
 
         log_prob = dist.log_prob(action)
+        #储存在buffer中
         entropy = dist.entropy()
         return action, log_prob, entropy, values

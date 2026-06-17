@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """教学版 shared PPO agent。"""
 
+#数据更新网络
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -83,31 +85,39 @@ class PPOAgent:
 
         for _ in range(ppo_epochs):
             indices = torch.randperm(batch_size, device=self.device)
+            #把样本顺序打乱
 
             for start in range(0, batch_size, minibatch_size):
                 mb_idx = indices[start : start + minibatch_size]
+                #切开成小块
 
                 _, new_log_probs, entropy, new_values = self.model.get_action_and_value(
                     batch.obs[mb_idx],
                     batch.actions[mb_idx],
                 )
+                #entropy：当前策略随机程度 new_values：当前 critic 对这些 obs 的新 value 估计
 
                 # ratio = pi_new(a|s) / pi_old(a|s)，old_log_prob 必须来自采样当时的策略。
+                #比较新旧策略对同一个动作的概率变化
                 log_ratio = new_log_probs - batch.old_log_probs[mb_idx]
                 ratio = log_ratio.exp()
 
                 mb_advantages = advantages[mb_idx]
                 unclipped = ratio * mb_advantages
+                #动作好坏决定新策略概率
                 clipped = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps)
+                #限制策略变化不要太大
                 clipped = clipped * mb_advantages
                 policy_loss = -torch.min(unclipped, clipped).mean()
 
                 # critic 学习拟合 GAE 得到的 return。
                 value_loss = nn.functional.mse_loss(new_values, batch.returns[mb_idx])
+                #让 new_values 尽量接近 returns
 
                 entropy_loss = entropy.mean()
+                #鼓励探索
                 loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy_loss
-
+                #总 loss = actor loss + critic loss - 探索奖励。
                 self.optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
