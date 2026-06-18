@@ -761,3 +761,7 @@ PPO 对这些超参数比较敏感：
 当前参数适合教学入门，但不保证在所有机器、所有环境版本上都稳定收敛。
 
 总之，当前代码的价值是帮助理解 PPO 数据流：从 MPE 的 observations 字典，到 shared ActorCritic，再到 buffer、GAE 和 PPO update。它是一个学习 baseline，不是追求最强性能的完整 MAPPO 实现。
+
+# 啊啊啊原论文是连续动作 现在是离散动作！argmax求导之后变成 0了啊
+# actor 出现 policy collapse，所有 agent 固定输出单一动作
+# 加入 entropy regularization 和 reward scaling

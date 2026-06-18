@@ -22,6 +22,8 @@ class MADDPGBatch:
     rewards: dict[str, torch.Tensor]
     next_obs: dict[str, torch.Tensor]
     dones: dict[str, torch.Tensor]
+    adv_policy_ids: torch.Tensor
+    prey_policy_ids: torch.Tensor
 
 
 class MultiAgentReplayBuffer:
@@ -67,6 +69,8 @@ class MultiAgentReplayBuffer:
             agent: np.zeros((capacity,), dtype=np.float32)
             for agent in agent_names
         }
+        self.adv_policy_ids = np.zeros((capacity,), dtype=np.int64)
+        self.prey_policy_ids = np.zeros((capacity,), dtype=np.int64)
 
     def __len__(self) -> int:
         return self.size
@@ -79,6 +83,8 @@ class MultiAgentReplayBuffer:
         rewards: dict[str, float],
         next_obs: dict[str, np.ndarray],
         dones: dict[str, bool],
+        adv_policy_id: int = 0,
+        prey_policy_id: int = 0,
     ) -> None:
         """写入一个完整的 multi-agent transition。"""
 
@@ -94,16 +100,38 @@ class MultiAgentReplayBuffer:
             self.next_obs[agent][index] = np.asarray(next_obs[agent], dtype=np.float32)
             self.dones[agent][index] = float(dones.get(agent, False))
 
+        self.adv_policy_ids[index] = int(adv_policy_id)
+        self.prey_policy_ids[index] = int(prey_policy_id)
         self.position = (self.position + 1) % self.capacity
         self.size = min(self.size + 1, self.capacity)
 
-    def sample(self, batch_size: int) -> MADDPGBatch:
+    def sample(
+        self,
+        batch_size: int,
+        adv_policy_id: int | None = None,
+        prey_policy_id: int | None = None,
+    ) -> MADDPGBatch:
         if self.size < batch_size:
             raise ValueError(
                 f"replay buffer 样本不足：当前 {self.size}，需要 {batch_size}"
             )
 
-        indices = np.random.randint(0, self.size, size=batch_size)
+        valid_indices = np.arange(self.size)
+        if adv_policy_id is not None:
+            valid_indices = valid_indices[
+                self.adv_policy_ids[valid_indices] == int(adv_policy_id)
+            ]
+        if prey_policy_id is not None:
+            valid_indices = valid_indices[
+                self.prey_policy_ids[valid_indices] == int(prey_policy_id)
+            ]
+        if len(valid_indices) < batch_size:
+            raise ValueError(
+                "replay buffer 中匹配 policy_id 的样本不足："
+                f"当前 {len(valid_indices)}，需要 {batch_size}"
+            )
+
+        indices = np.random.choice(valid_indices, size=batch_size, replace=True)
 
         def tensor_dict(source: dict[str, np.ndarray], dtype: torch.dtype) -> dict[str, torch.Tensor]:
             return {
@@ -122,4 +150,30 @@ class MultiAgentReplayBuffer:
             rewards=tensor_dict(self.rewards, torch.float32),
             next_obs=tensor_dict(self.next_obs, torch.float32),
             dones=tensor_dict(self.dones, torch.float32),
+            adv_policy_ids=torch.as_tensor(
+                self.adv_policy_ids[indices],
+                dtype=torch.long,
+                device=self.device,
+            ),
+            prey_policy_ids=torch.as_tensor(
+                self.prey_policy_ids[indices],
+                dtype=torch.long,
+                device=self.device,
+            ),
         )
+
+    def count_policy_samples(
+        self,
+        adv_policy_id: int | None = None,
+        prey_policy_id: int | None = None,
+    ) -> int:
+        valid_indices = np.arange(self.size)
+        if adv_policy_id is not None:
+            valid_indices = valid_indices[
+                self.adv_policy_ids[valid_indices] == int(adv_policy_id)
+            ]
+        if prey_policy_id is not None:
+            valid_indices = valid_indices[
+                self.prey_policy_ids[valid_indices] == int(prey_policy_id)
+            ]
+        return int(len(valid_indices))

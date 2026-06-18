@@ -1,0 +1,49 @@
+{
+  "episodes": 1000,
+  "max_cycles": 100,
+  "batch_size": 1024,
+  "buffer_size": 1000000,
+  "learning_rate_actor": 0.01,
+  "learning_rate_critic": 0.01,
+  "gamma": 0.95,
+  "tau": 0.01,
+  "hidden_dim": 128,
+  "start_steps": 1000,
+  "update_after": 1000,
+  "update_every": 100,
+  "eval_interval": 50,
+  "eval_episodes": 20,
+  "seed": 1,
+  "epsilon_start": 1.0,
+  "epsilon_end": 0.05,
+  "epsilon_decay_updates": 800,
+  "save_interval": 20,
+  "use_policy_ensemble": true,
+  "ensemble_size": 2,
+  "paper_preset": true,
+  "env": "simple_tag_v3",
+  "env_source": "mpe2",
+  "agent_names": [
+    "adversary_0",
+    "adversary_1",
+    "adversary_2",
+    "agent_0"
+  ],
+  "adversary_agents": [
+    "adversary_0",
+    "adversary_1",
+    "adversary_2"
+  ],
+  "prey_agent": "agent_0",
+  "obs_dims": {
+    "adversary_0": 16,
+    "adversary_1": 16,
+    "adversary_2": 16,
+    "agent_0": 14
+  },
+  "action_dim": 5,
+  "global_obs_dim": 62,
+  "global_action_dim": 20,
+  "critic_input_dim": 82,
+  "algorithm": "MADDPG with discrete straight-through Gumbel-Softmax"
+}

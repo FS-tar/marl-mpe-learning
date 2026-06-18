@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch import nn
 from torch.optim import Adam
 
 from algorithms.maddpg.networks import (
@@ -29,6 +30,7 @@ class MADDPGAgentConfig:
     actor_lr: float
     critic_lr: float
     device: torch.device
+    ensemble_size: int = 1
 
 
 class MADDPGAgent:
@@ -40,33 +42,70 @@ class MADDPGAgent:
         self.action_dim = config.action_dim
         self.device = config.device
 
-        self.actor = DiscreteActor(
-            obs_dim=config.obs_dim,
-            action_dim=config.action_dim,
-            hidden_dim=config.hidden_dim,
+        self.ensemble_size = max(1, int(config.ensemble_size))
+
+        self.actors = nn.ModuleList(
+            [
+                DiscreteActor(
+                    obs_dim=config.obs_dim,
+                    action_dim=config.action_dim,
+                    hidden_dim=config.hidden_dim,
+                )
+                for _ in range(self.ensemble_size)
+            ]
         ).to(config.device)
-        self.target_actor = DiscreteActor(
-            obs_dim=config.obs_dim,
-            action_dim=config.action_dim,
-            hidden_dim=config.hidden_dim,
+        self.target_actors = nn.ModuleList(
+            [
+                DiscreteActor(
+                    obs_dim=config.obs_dim,
+                    action_dim=config.action_dim,
+                    hidden_dim=config.hidden_dim,
+                )
+                for _ in range(self.ensemble_size)
+            ]
         ).to(config.device)
 
-        self.critic = CentralizedCritic(
-            global_obs_dim=config.global_obs_dim,
-            global_action_dim=config.global_action_dim,
-            hidden_dim=config.hidden_dim,
+        self.critics = nn.ModuleList(
+            [
+                CentralizedCritic(
+                    global_obs_dim=config.global_obs_dim,
+                    global_action_dim=config.global_action_dim,
+                    hidden_dim=config.hidden_dim,
+                )
+                for _ in range(self.ensemble_size)
+            ]
         ).to(config.device)
-        self.target_critic = CentralizedCritic(
-            global_obs_dim=config.global_obs_dim,
-            global_action_dim=config.global_action_dim,
-            hidden_dim=config.hidden_dim,
+        self.target_critics = nn.ModuleList(
+            [
+                CentralizedCritic(
+                    global_obs_dim=config.global_obs_dim,
+                    global_action_dim=config.global_action_dim,
+                    hidden_dim=config.hidden_dim,
+                )
+                for _ in range(self.ensemble_size)
+            ]
         ).to(config.device)
 
-        hard_update(self.actor, self.target_actor)
-        hard_update(self.critic, self.target_critic)
+        for policy_id in range(self.ensemble_size):
+            hard_update(self.actors[policy_id], self.target_actors[policy_id])
+            hard_update(self.critics[policy_id], self.target_critics[policy_id])
 
-        self.actor_optimizer = Adam(self.actor.parameters(), lr=config.actor_lr)
-        self.critic_optimizer = Adam(self.critic.parameters(), lr=config.critic_lr)
+        self.actor_optimizers = [
+            Adam(actor.parameters(), lr=config.actor_lr)
+            for actor in self.actors
+        ]
+        self.critic_optimizers = [
+            Adam(critic.parameters(), lr=config.critic_lr)
+            for critic in self.critics
+        ]
+
+        # 兼容旧 joint MADDPG 代码路径：K=1 时这些属性仍指向第 0 个子策略。
+        self.actor = self.actors[0]
+        self.target_actor = self.target_actors[0]
+        self.critic = self.critics[0]
+        self.target_critic = self.target_critics[0]
+        self.actor_optimizer = self.actor_optimizers[0]
+        self.critic_optimizer = self.critic_optimizers[0]
 
     @torch.no_grad()
     def act(
@@ -74,6 +113,7 @@ class MADDPGAgent:
         obs: np.ndarray,
         epsilon: float = 0.0,
         explore: bool = True,
+        policy_id: int = 0,
     ) -> tuple[int, np.ndarray]:
         """选择离散动作，并返回对应 one-hot。
 
@@ -81,6 +121,7 @@ class MADDPGAgent:
         分布采样；评估时 explore=False，直接使用 argmax。
         """
 
+        policy_id = self._normalize_policy_id(policy_id)
         if explore and np.random.random() < epsilon:
             action = int(np.random.randint(self.action_dim))
             one_hot = np.eye(self.action_dim, dtype=np.float32)[action]
@@ -91,7 +132,7 @@ class MADDPGAgent:
             dtype=torch.float32,
             device=self.device,
         ).unsqueeze(0)
-        logits = self.actor(obs_tensor)
+        logits = self.actors[policy_id](obs_tensor)
 
         if explore:
             probs = F.softmax(logits, dim=-1)
@@ -107,12 +148,32 @@ class MADDPGAgent:
     def save(self, path: str) -> None:
         torch.save(
             {
-                "actor": self.actor.state_dict(),
-                "critic": self.critic.state_dict(),
-                "target_actor": self.target_actor.state_dict(),
-                "target_critic": self.target_critic.state_dict(),
-                "actor_optimizer": self.actor_optimizer.state_dict(),
-                "critic_optimizer": self.critic_optimizer.state_dict(),
+                "ensemble_size": self.ensemble_size,
+                "actors": [actor.state_dict() for actor in self.actors],
+                "critics": [critic.state_dict() for critic in self.critics],
+                "target_actors": [
+                    target_actor.state_dict()
+                    for target_actor in self.target_actors
+                ],
+                "target_critics": [
+                    target_critic.state_dict()
+                    for target_critic in self.target_critics
+                ],
+                "actor_optimizers": [
+                    optimizer.state_dict()
+                    for optimizer in self.actor_optimizers
+                ],
+                "critic_optimizers": [
+                    optimizer.state_dict()
+                    for optimizer in self.critic_optimizers
+                ],
             },
             path,
         )
+
+    def _normalize_policy_id(self, policy_id: int) -> int:
+        if policy_id < 0 or policy_id >= self.ensemble_size:
+            raise ValueError(
+                f"{self.name} policy_id={policy_id} 超出范围 [0, {self.ensemble_size - 1}]"
+            )
+        return int(policy_id)

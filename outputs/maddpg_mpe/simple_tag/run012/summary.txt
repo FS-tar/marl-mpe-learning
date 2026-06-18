@@ -1,0 +1,16 @@
+run directory: D:\fishstar\software\PyCharm 2024.3.5\projects\marl-mpe-learning\outputs\maddpg_mpe\simple_tag\run012
+total episodes: 2000
+total steps: 200000
+final eval_adv_vs_random_prey_adversary_return: 31.200
+random adversary baseline = 17.0
+adversary better than random: better
+final eval_random_adv_vs_prey_prey_return: -15.406
+random prey baseline = -181.9
+prey better than random: better
+final eval_adv_vs_random_prey_touch_count: 3.120
+random touch baseline = 1.7
+final mean_critic_loss: 0.009
+final mean_actor_loss: -0.157
+final mean_actor_entropy: 1.139
+policy collapse risk: no obvious collapse from entropy
+training health: OK

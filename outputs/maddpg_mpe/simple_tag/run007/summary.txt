@@ -1,0 +1,17 @@
+run directory: outputs\maddpg_mpe\simple_tag\run007
+total episodes: 20
+total steps: 1000
+final eval_adv_vs_random_prey_adversary_return: 80.000
+random adversary baseline = 17.0
+adversary better than random: better
+final eval_random_adv_vs_prey_prey_return: -317.759
+random prey baseline = -181.9
+prey better than random: worse
+final eval_adv_vs_random_prey_touch_count: 8.000
+random touch baseline = 1.7
+final mean_critic_loss: not available
+final mean_actor_loss: not available
+final mean_actor_entropy: not available
+policy collapse risk: not checked
+training health: OK
+mean_actor_entropy not available because no actor update happened.
