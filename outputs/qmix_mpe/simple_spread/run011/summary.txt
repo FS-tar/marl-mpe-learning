@@ -1,0 +1,23 @@
+run directory: D:\fishstar\software\PyCharm 2024.3.5\projects\marl-mpe-learning\outputs\qmix_mpe\simple_spread\run011
+total episodes: 30
+total steps: 1500
+final eval_team_return: -90.059724928934
+final td_loss: 2.1100375652313232
+final epsilon: 0.55
+random team baseline: -60.78348255205743
+qmix better than random: worse
+random baseline source: D:\fishstar\software\PyCharm 2024.3.5\projects\marl-mpe-learning\outputs\qmix_mpe\simple_spread\random_baselines\random_baseline_cycles50_mode_mean.json
+random baseline max_cycles: 50
+random baseline team_reward_mode: mean
+grad_clip: 10.0
+loss_type: huber
+reward_scale: 0.05
+team_reward_mode: mean
+epsilon_end: 0.1
+min_epsilon: 0.1
+epsilon_eval: 0.0
+use_layer_norm: True
+mixer_weight_clip: 10.0
+mixer_weight_activation: softplus
+policy collapse risk: no obvious collapse
+training health: OK

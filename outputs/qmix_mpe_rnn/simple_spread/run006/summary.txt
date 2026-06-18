@@ -1,0 +1,33 @@
+run directory: D:\fishstar\software\PyCharm 2024.3.5\projects\marl-mpe-learning\outputs\qmix_mpe_rnn\simple_spread\run006
+total episodes: 30
+total steps: 1500
+final eval_team_return: -100.92421287311402
+final td_loss: 0.03494283929467201
+final epsilon: 0.55
+random team baseline: -60.78348255205743
+qmix better than random: worse
+learning status: worse than random
+random baseline source: D:\fishstar\software\PyCharm 2024.3.5\projects\marl-mpe-learning\outputs\qmix_mpe\simple_spread\random_baselines\random_baseline_cycles50_mode_mean.json
+policy collapse risk: no obvious collapse
+collapse_reason: none
+action_entropy_mean: 1.0458999984655166
+used_action_count_min: 3
+max_action_ratio_max: 0.592
+top2_action_ratio_max: 0.812
+training health: warning
+mixer_type: vdn
+double_q: True
+reward_scale: 0.05
+team_reward_mode: mean
+rnn_hidden_dim: 64
+include_last_action: True
+include_agent_id: True
+rnn_input_dim: 26
+hidden_dim: 64
+use_layer_norm: True
+mixer_weight_clip: 1.0
+mixer_bias_clip: 5.0
+mixer_weight_activation: softplus
+action stats agent_0: max_action_ratio=0.592, top2_action_ratio=0.808, used_action_count=3, action_entropy=0.958220103638692, collapse_reason=none
+action stats agent_1: max_action_ratio=0.58, top2_action_ratio=0.812, used_action_count=4, action_entropy=1.0868353611830464, collapse_reason=none
+action stats agent_2: max_action_ratio=0.556, top2_action_ratio=0.78, used_action_count=4, action_entropy=1.0926445305748111, collapse_reason=none

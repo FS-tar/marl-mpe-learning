@@ -1,0 +1,9 @@
+{
+  "random_team_return": -57.64691284457341,
+  "random_mean_agent_return": -57.64691284457341,
+  "random_episode_length": 50.0,
+  "episodes": 1000,
+  "max_cycles": 50,
+  "team_reward_mode": "mean",
+  "source": "D:\\fishstar\\software\\PyCharm 2024.3.5\\projects\\marl-mpe-learning\\outputs\\qmix_mpe\\simple_spread\\random_baselines\\random_baseline_cycles50_mode_mean.json"
+}

@@ -1,0 +1,8 @@
+{
+  "random_team_return": -133.86914610348592,
+  "random_mean_agent_return": -133.86914610348592,
+  "random_episode_length": 100.0,
+  "episodes": 100,
+  "max_cycles": 100,
+  "team_reward_mode": "mean"
+}

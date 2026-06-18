@@ -1,0 +1,17 @@
+run directory: D:\fishstar\software\PyCharm 2024.3.5\projects\marl-mpe-learning\outputs\qmix_mpe\simple_spread\run009
+total episodes: 300
+total steps: 30000
+final eval_team_return: -1206.9079862713693
+final td_loss: 1.8706552982330322
+final epsilon: 0.55
+random team baseline: -133.86914610348592
+qmix better than random: worse
+grad_clip: 10.0
+loss_type: huber
+reward_scale: 0.05
+team_reward_mode: mean
+epsilon_end: 0.1
+min_epsilon: 0.1
+epsilon_eval: 0.0
+policy collapse risk: high collapse risk
+training health: warning

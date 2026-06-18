@@ -1,0 +1,23 @@
+run directory: D:\fishstar\software\PyCharm 2024.3.5\projects\marl-mpe-learning\outputs\qmix_mpe_rnn\simple_spread\run001
+total episodes: 5
+total steps: 125
+final eval_team_return: -53.35837456679006
+final td_loss: 0.1452721208333969
+final epsilon: 0.8875
+random team baseline: not found
+qmix better than random: not checked
+learning status: not checked
+random baseline source: not found
+policy collapse risk: high collapse risk
+training health: warning
+mixer_type: vdn
+double_q: True
+reward_scale: 0.05
+team_reward_mode: mean
+rnn_hidden_dim: 64
+hidden_dim: 64
+use_layer_norm: True
+mixer_weight_clip: 1.0
+mixer_bias_clip: 5.0
+mixer_weight_activation: softplus
+random baseline warning: no matching baseline for max_cycles=25, team_reward_mode=mean

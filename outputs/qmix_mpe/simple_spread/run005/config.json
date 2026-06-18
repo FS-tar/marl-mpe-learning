@@ -1,0 +1,32 @@
+{
+  "episodes": 1000,
+  "max_cycles": 100,
+  "batch_size": 128,
+  "buffer_size": 100000,
+  "start_steps": 1000,
+  "update_after": 1000,
+  "update_every": 10,
+  "learning_rate": 0.0005,
+  "gamma": 0.99,
+  "tau": 0.01,
+  "hidden_dim": 128,
+  "epsilon_start": 1.0,
+  "epsilon_end": 0.05,
+  "epsilon_decay_steps": 30000,
+  "eval_interval": 50,
+  "eval_episodes": 20,
+  "seed": 1,
+  "algorithm": "simplified_mlp_qmix",
+  "env": "simple_spread_v3",
+  "agent_names": [
+    "agent_0",
+    "agent_1",
+    "agent_2"
+  ],
+  "n_agents": 3,
+  "obs_dim": 18,
+  "action_dim": 5,
+  "state_dim": 54,
+  "device": "cpu",
+  "env_source": "mpe2"
+}

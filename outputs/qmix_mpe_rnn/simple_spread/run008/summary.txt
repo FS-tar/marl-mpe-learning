@@ -1,0 +1,41 @@
+run directory: D:\fishstar\software\PyCharm 2024.3.5\projects\marl-mpe-learning\outputs\qmix_mpe_rnn\simple_spread\run008
+total episodes: 300
+total steps: 15000
+final eval_team_return: -73.27413203309281
+final td_loss: 0.007541111204773188
+final epsilon: 0.1
+best eval_team_return: -59.59469302780256
+best eval episode: 275
+best checkpoint path: D:\fishstar\software\PyCharm 2024.3.5\projects\marl-mpe-learning\outputs\qmix_mpe_rnn\simple_spread\run008\checkpoints\qmix_rnn_best.pt
+random team baseline: -60.78348255205743
+algorithm label: RNN-VDN
+final better than random: worse
+best better than random: better
+learning status final: worse than random
+learning status best: better than random
+final learning status: worse than random
+best learning status: better than random
+random baseline source: D:\fishstar\software\PyCharm 2024.3.5\projects\marl-mpe-learning\outputs\qmix_mpe\simple_spread\random_baselines\random_baseline_cycles50_mode_mean.json
+policy collapse risk: no obvious collapse
+collapse_reason: none
+action_entropy_mean: 1.4180405267593914
+used_action_count_min: 4
+max_action_ratio_max: 0.368
+top2_action_ratio_max: 0.64
+training health: OK
+mixer_type: vdn
+double_q: True
+reward_scale: 0.05
+team_reward_mode: mean
+rnn_hidden_dim: 64
+include_last_action: True
+include_agent_id: True
+rnn_input_dim: 26
+hidden_dim: 64
+use_layer_norm: True
+mixer_weight_clip: 1.0
+mixer_bias_clip: 5.0
+mixer_weight_activation: softplus
+action stats agent_0: max_action_ratio=0.368, top2_action_ratio=0.64, used_action_count=5, action_entropy=1.4517226953777238, collapse_reason=none
+action stats agent_1: max_action_ratio=0.348, top2_action_ratio=0.616, used_action_count=5, action_entropy=1.465519248759172, collapse_reason=none
+action stats agent_2: max_action_ratio=0.36, top2_action_ratio=0.636, used_action_count=4, action_entropy=1.336879636141279, collapse_reason=none

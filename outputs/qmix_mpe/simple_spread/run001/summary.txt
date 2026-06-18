@@ -1,0 +1,8 @@
+run directory: D:\fishstar\software\PyCharm 2024.3.5\projects\marl-mpe-learning\outputs\qmix_mpe\simple_spread\run001
+total episodes: 30
+total steps: 1500
+final eval_team_return: -108.32358552219424
+final td_loss: 0.694863498210907
+final epsilon: 0.55
+policy collapse risk: no obvious collapse
+training health: OK
